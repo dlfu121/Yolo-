@@ -1,0 +1,32 @@
+======================================================================
+           🏋️ FitVision MVP - 健身动作质量评估报告
+======================================================================
+
+评估时间: 2026-04-13T19:54:38.178607
+动作类型: bicep_curl
+
+----------------------------------------------------------------------
+
+【摘要 Summary】
+  • total_reps: 0
+  • valid_reps: 0
+  • completion_rate: 0.0%
+  • session_duration: 4.9s
+
+【性能指标 Performance】
+  • avg_score: 0.0/100
+  • min_score: 0.0/100
+  • max_score: 0.0/100
+  • avg_eccentric_time: 0.50s
+  • avg_concentric_time: 0.35s
+
+【生物力学 Biomechanics】
+  • avg_elbow_angle_at_bottom: 0.0°
+  • range_of_motion: Good
+
+【反馈与建议 Feedback & Suggestions】
+
+  改进建议:
+    ✓ 动作质量良好，保持持续训练
+
+======================================================================

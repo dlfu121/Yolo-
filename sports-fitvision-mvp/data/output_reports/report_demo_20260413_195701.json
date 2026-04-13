@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-04-13T19:57:01.901870",
+  "action": "bicep_curl",
+  "summary": {
+    "total_reps": 8,
+    "valid_reps": 8,
+    "completion_rate": "100.0%",
+    "session_duration": "120.0s"
+  },
+  "performance": {
+    "avg_score": "94.4/100",
+    "min_score": "80.0/100",
+    "max_score": "100.0/100",
+    "avg_eccentric_time": "0.88s",
+    "avg_concentric_time": "0.77s"
+  },
+  "biomechanics": {
+    "avg_elbow_angle_at_bottom": "51.1°",
+    "range_of_motion": "Good"
+  },
+  "feedback": {
+    "common_issues": [
+      "下放速度过快，缺乏控制",
+      "大臂脱离躯干，存在借力",
+      "活动范围不足，未充分收缩"
+    ],
+    "suggestions": [
+      "动作质量良好，保持持续训练"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-04-13T21:24:40.572331",
+  "action": "bicep_curl",
+  "summary": {
+    "total_reps": 0,
+    "valid_reps": 0,
+    "completion_rate": "0.0%",
+    "session_duration": "0.0s"
+  },
+  "performance": {
+    "avg_score": "0.0/100",
+    "min_score": "0.0/100",
+    "max_score": "0.0/100",
+    "avg_eccentric_time": "0.50s",
+    "avg_concentric_time": "0.35s"
+  },
+  "biomechanics": {
+    "avg_elbow_angle_at_bottom": "0.0°",
+    "range_of_motion": "Good"
+  },
+  "feedback": {
+    "common_issues": [],
+    "suggestions": [
+      "动作质量良好，保持持续训练"
+    ]
+  }
+}

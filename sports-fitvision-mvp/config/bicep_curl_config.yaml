@@ -1,0 +1,45 @@
+action: "bicep_curl"
+description: "二头肌弯举质量评估"
+
+# 阶段定义
+states:
+  preparation: "准备阶段（双臂自然垂直，肘关节角度 > 160°）"
+  eccentric: "离心下放（从弯曲状态缓慢伸直）"
+  bottom: "最低点（肘角接近 170°）"
+  concentric: "向心上提（弯举至肘角 < 60°）"
+  top: "收缩顶点（保持 0.5-1 秒）"
+
+# 关键点定义 (YOLOv8-Pose 编号)
+keypoints:
+  shoulder: [5, 6]         # 左右肩膀 (5=R_shoulder, 6=L_shoulder)
+  elbow: [7, 8]            # 左右肘部
+  wrist: [9, 10]           # 左右腕部
+
+# 角度阈值 (单位: 度数)
+thresholds:
+  elbow_extension: 170     # 伸直状态的肘关节角度
+  elbow_flexion: 60        # 充分收缩的肘关节角度
+  elbow_flexion_min: 50    # 最小收缩角度
+  arm_deviation: 10        # 大臂与躯干偏离阈值 (像素)
+  wrist_stability: 5       # 腕部稳定性 (标准差)
+
+# 时间阈值 (单位: 帧, 30FPS)
+timing:
+  eccentric_min_frames: 15  # 离心阶段最少 0.5 秒（15 帧）
+  eccentric_max_frames: 60  # 离心阶段最多 2 秒（60 帧）
+  concentric_min_frames: 10 # 向心阶段最少 0.33 秒（10 帧）
+  top_hold_frames: 15       # 顶点保持最少 0.5 秒
+
+# 评分规则
+scoring:
+  perfect_rep: 100
+  deduction_rules:
+    arm_deviation: 10       # 大臂脱离扣 10 分
+    speed_too_fast: 15      # 速度过快扣 15 分
+    incomplete_range: 20    # 活动范围不足扣 20 分
+    wrist_movement: 8       # 腕部活动扣 8 分
+    uncontrolled_descent: 25 # 缺乏控制扣 25 分
+
+# 有效性判定
+validity:
+  min_score: 70  # 单次得分 ≥70 才算有效次数

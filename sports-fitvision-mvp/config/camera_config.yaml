@@ -1,0 +1,14 @@
+camera:
+  source: 0                 # 0 = 默认摄像头，或填入视频文件路径 'path/to/video.mp4'
+  resolution_width: 512
+  resolution_height: 384
+  fps: 30
+
+pose_detection:
+  model_name: "yolov8n-pose"  # CPU 优先使用更轻的模型；有 GPU 可再切换到 m
+  confidence_threshold: 0.5   # 关键点置信度阈值
+  device: 0                   # GPU 设备号 (0 = RTX 4060)
+
+processing:
+  smooth_frames: 5            # 坐标平滑处理的帧数
+  skip_frames: 2              # 跳帧 (2 = 每 3 帧推理一次，降低 CPU 延迟)
