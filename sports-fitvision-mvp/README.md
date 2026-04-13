@@ -1,302 +1,157 @@
-# FitVision MVP - 二头肌弯举质量评估 Demo
+# FitVision MVP
 
-## 项目概述
+基于 YOLOv8-Pose + OpenCV 的实时二头肌弯举质量评估 Demo。
 
-基于 **YOLOv8-Pose + OpenCV** 的实时二头肌弯举动作质量评估系统。通过单摄像头识别动作阶段、计算关键角度和速度，自动评估动作标准性并生成详细报告。
+核心目标不是“只计数”，而是把动作拆解为可解释的技术链路：
+姿态检测 -> 运动学特征 -> 状态机分段 -> 规则评分 -> 可视化反馈 -> 报告沉淀。
 
-### 核心功能
+## 技术架构总览
 
-- ✅ **实时姿态检测**: YOLOv8-Pose 30+ FPS 推理
-- ✅ **动作识别与计数**: 5 阶段状态机自动识别动作完整性
-- ✅ **质量评估**: 基于肘角、速度、大臂偏离、腕部稳定性的规则引擎
-- ✅ **实时反馈**: OpenCV HUD 显示状态、角度、得分、警告
-- ✅ **报告生成**: JSON + 文本格式的详细评估报告与改进建议
+### 分层架构
 
----
+1. 视觉层（Vision）
+- 输入摄像头或视频流。
+- 使用 YOLOv8-Pose 产出 17 点关键点与置信度。
+- 通过跳帧推理 + 关键点缓存降低 CPU 延迟。
 
-## 硬件要求
+2. 运动学层（Kinematics）
+- 将关键点映射为肩/肘/腕关节对象。
+- 计算肘角、大臂水平偏移、腕部稳定性等特征。
 
-- **GPU**: NVIDIA RTX 4060 或更高
-- **显存**: 8GB+ (可选: 可降级到 CPU 推理，但速度会下降)
-- **摄像头**: USB 摄像头或笔记本内置摄像头
-- **分辨率**: 建议 640×480 (30 FPS)
+3. 时序引擎层（Engine）
+- 状态机负责动作阶段划分与 reps 计数。
+- 规则评估器负责扣分、有效性判定与反馈生成。
 
----
+4. 表达层（UI + Reporting）
+- UI 实时渲染骨架、状态、角度、分数、FPS、警告。
+- Reporting 生成 JSON/TXT 训练报告。
 
-## 快速开始
+### 端到端数据流
 
-### 1. 环境装环
+```text
+Camera/Video Frame
+  -> PoseDetector.detect()
+  -> FrameProcessor.smooth_keypoints()
+  -> JointManager.extract()
+  -> AngleCalculator (角度/偏移/稳定性)
+  -> BicepCurlStateMachine.update()
+  -> RuleEvaluator.evaluate_rep()
+  -> PoseRenderer.draw_hud()
+  -> ReportGenerator.generate/save()
+```
+
+## 核心算法设计
+
+### 1) 状态机：动作分段与 reps 计数
+
+状态循环：
+
+```text
+IDLE -> PREPARATION -> ECCENTRIC -> BOTTOM -> CONCENTRIC -> TOP -> PREPARATION
+```
+
+- `rep_count` 在一次完整循环闭环时增加。
+- 当前实现中，单次评估只在“状态刚切回 PREPARATION”时触发，避免重复评估导致 `valid > reps`。
+- 已支持“左臂/右臂任意一侧完整可见即可参与评估”（右臂优先，右臂缺失时自动切左臂）。
+
+### 2) 规则引擎：质量评分与有效性
+
+每次动作从 100 分起，根据规则扣分：
+
+| 规则 | 典型阈值 | 扣分 |
+|---|---|---|
+| speed_too_fast | 离心帧数 < `eccentric_min_frames` | 15 |
+| arm_deviation | 偏移 > `arm_deviation` | 10 |
+| wrist_movement | 波动 > `wrist_stability` | 8 |
+| incomplete_range | 最小肘角 > `elbow_flexion` | 20 |
+| uncontrolled_descent | 离心帧数 > `eccentric_max_frames` | 15 |
+
+- `is_valid = score >= validity.min_score`（默认 70）。
+- `reps` 是总完成次数，`valid` 是达标次数。
+
+### 3) 实时性能策略（CPU 友好）
+
+- 模型：默认 `yolov8n-pose`。
+- 分辨率：默认 `512 x 384`。
+- 跳帧：`skip_frames = 2`（每 3 帧推理一次）。
+- 缓存：非推理帧复用上次关键点。
+- Windows 摄像头后端回退：DSHOW -> MSMF -> ANY。
+- HUD 显示平滑 FPS，便于在线调参。
+
+## 关键模块职责
+
+```text
+src/
+  main.py                     # 应用编排、主循环、超时清零逻辑
+  vision/
+    pose_detector.py          # YOLOv8-Pose 封装与设备选择
+    frame_processor.py        # 关键点平滑与帧处理
+  kinematics/
+    joints.py                 # 关键点到关节语义映射
+    angle_calculator.py       # 角度/距离/稳定性计算
+  engine/
+    state_machine.py          # 动作状态机与 reps 计数
+    rule_evaluator.py         # 规则评分与 valid 判定
+  ui/
+    render.py                 # 骨架/HUD 渲染
+  reporting/
+    report_generator.py       # 训练报告输出(JSON/TXT)
+```
+
+## 配置驱动设计
+
+### config/bicep_curl_config.yaml
+- 定义动作阈值、时序阈值、评分规则、有效分数线。
+- 调整阈值即可改变判定策略，无需改代码。
+
+### config/camera_config.yaml
+- 定义视频源、分辨率、目标 FPS、模型与推理参数。
+- 可在“准确率/实时性”之间做工程化平衡。
+
+## 运行方式
+
+### 环境准备
 
 ```bash
-# 创建虚拟环境（可选但推荐）
 python -m venv venv
-venv\Scripts\activate      # Windows
-# source venv/bin/activate  # macOS/Linux
-
-# 安装依赖
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. 运行 Demo
+### 启动
 
 ```bash
-# 使用摄像头实时运行
-cd src
-python main.py
-
-# 或使用本地视频文件（需要先修改 config/camera_config.yaml 中的 source）
-# python main.py
+python src/main.py
 ```
 
-### 3. 操作指令
+### 退出
 
-- **开始训练**: 对着摄像头做弯举动作
-- **退出程序**: 按 `Q` 键
+- 在窗口中按 `Q`。
 
-### 4. 查看报告
+## 工程特性（当前版本）
 
-程序结束后，报告自动生成在 `data/output_reports/` 目录，包括：
-- `report_YYYYMMDD_HHMMSS.json` - 机器可读格式
-- `report_YYYYMMDD_HHMMSS.txt` - 人类可读格式
+- 支持摄像头实时评估和报告落盘。
+- 支持左/右臂任一侧满足条件即参与识别。
+- 修复了重复评估导致的 `valid` 计数偏大问题。
+- 增加“60 秒无动作自动清零 reps/valid”机制。
 
----
+## 报告输出
 
-## 项目结构
+输出目录：`data/output_reports/`
 
-```
-sports-fitvision-mvp/
-├── config/                          # 配置文件
-│   ├── bicep_curl_config.yaml       # 二头肌弯举规则、阈值
-│   └── camera_config.yaml           # 摄像头和推理参数
-├── src/
-│   ├── main.py                      # 主程序入口
-│   ├── vision/                      # 视觉模块
-│   │   ├── pose_detector.py         # YOLOv8-Pose 检测器
-│   │   └── frame_processor.py       # 帧处理和坐标平滑
-│   ├── kinematics/                  # 运动学计算
-│   │   ├── angle_calculator.py      # 角度、距离、速度计算
-│   │   └── joints.py                # 关键点管理和 YOLOv8 编号映射
-│   ├── engine/                      # 核心逻辑引擎
-│   │   ├── state_machine.py         # 5 态动作状态机
-│   │   └── rule_evaluator.py        # 规则评估和评分
-│   ├── ui/                          # 用户界面
-│   │   └── render.py                # OpenCV 实时渲染
-│   └── reporting/                   # 报告生成
-│       └── report_generator.py      # 报告和改进建议生成
-├── data/
-│   ├── sample_videos/               # 测试视频
-│   └── output_reports/              # 生成的报告
-├── requirements.txt                 # Python 依赖
-└── README.md                        # 项目说明（本文件）
-```
+- `report_YYYYMMDD_HHMMSS.json`：结构化结果，便于后续接入前端/服务。
+- `report_YYYYMMDD_HHMMSS.txt`：可直接阅读的训练总结与建议。
 
----
+## 后续扩展建议
 
-## 核心设计
+1. 多动作扩展：通过配置新增深蹲、推举等动作模板。
+2. 多线程采集：采集/推理解耦，进一步降低卡顿。
+3. 模型量化：提升 CPU 端吞吐。
+4. 服务化：将报告和历史曲线接入 Web 后端。
 
-### 1. 动作识别 - 5 阶段状态机
+## License
 
-```
-IDLE → PREPARATION → ECCENTRIC → BOTTOM → CONCENTRIC → TOP → PREPARATION → ...
- |
- └─────────────────── 重复循环 ──────────────────────────────┘
-```
-
-- **IDLE**: 静止，等待开始
-- **PREPARATION**: 准备阶段（肘角 > 160°）
-- **ECCENTRIC**: 离心下放（手臂逐渐伸直）
-- **BOTTOM**: 最低点（肘角接近 170°，完全伸直）
-- **CONCENTRIC**: 向心上提（弯举至肘角 < 60°）
-- **TOP**: 收缩顶点（充分收缩状态）
-
-### 2. 评估规则
-
-每次动作完成后，规则引擎自动计算扣分:
-
-| 问题 | 扣分 | 判定依据 |
-|---|---|---|
-| 大臂脱离躯干 | -10 | 水平偏离 > 10cm |
-| 速度过快 | -15 | 离心时间 < 0.5秒 |
-| 不完全收缩 | -20 | 最低肘角 > 60° |
-| 腕部摆动 | -8 | 腕部移动 > 5cm |
-| 缺乏控制 | -25 | 离心时间 > 2秒 |
-
-**满分 100 分，≥70 分判定为有效次数。**
-
-### 3. 关键点映射
-
-使用 YOLOv8-Pose 的 17 个关键点，弯举需要的关键点：
-
-| 关键点 | YOLOv8 编号 | 用途 |
-|---|---|---|
-| 右肩 | 5 | 参考点（大臂基准） |
-| 右肘 | 7 | **核心**（角度计算） |
-| 右腕 | 9 | 参考点（腕部稳定性） |
-
----
-
-## 配置说明
-
-### bicep_curl_config.yaml
-
-**关键参数**:
-
-```yaml
-# 角度阈值
-thresholds:
-  elbow_extension: 170   # 伸直状态（度）
-  elbow_flexion: 60      # 充分收缩（度）
-  arm_deviation: 10      # 大臂偏离（像素）
-
-# 时间阈值 (30 FPS)
-timing:
-  eccentric_min_frames: 15   # 最少 0.5 秒下放
-  eccentric_max_frames: 60   # 最多 2 秒下放
-
-# 评分有效性
-validity:
-  min_score: 70   # 单次得分 ≥70 才算有效
-```
-
-**如需调参**:
-1. 修改 `bicep_curl_config.yaml` 中的阈值
-2. 重新运行程序，新参数立即生效（无需重新编译）
-
-### camera_config.yaml
-
-```yaml
-camera:
-  source: 0              # 0=摄像头，或 'path/video.mp4'=视频文件
-  resolution_width: 640
-  resolution_height: 480
-  fps: 30
-
-pose_detection:
-  model_name: "yolov8m-pose"  # m = 中等模型（平衡精度和速度）
-  device: 0                   # 0 = GPU 0 (RTX 4060)
-```
-
----
-
-## 实时显示说明
-
-运行程序时，屏幕实时显示：
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ [状态条] CONCENTRIC (向心上提)                                  │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  State: CONCENTRIC              Elbow: 45.2°                    │
-│  Reps: 5 | Valid: 4             Score: 95/100                   │
-│  Frame: 2145                                                    │
-│                                                                  │
-│         [骨架渲染和关键点]                                       │
-│                                                                  │
-│  ⚠ 腕部活动过大 (显示最近 3 个警告)                             │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**色彩含义**:
-- 🟢 **绿色** (State, Valid Reps): 正常
-- 🟡 **黄色** (Elbow angle): 当前测量值
-- 🟢/🔴 **得分颜色**: ≥70 分绿色，<70 分红色
-- 🔴 **红色** (警告): 问题提示
-
----
-
-## 使用流程
-
-### 标准弯举检测
-
-1. **启动程序**: `python main.py`
-2. **对着摄像头**: 保持侧面或正面位置，距离 1-2 米
-3. **完成动作**: 做标准二头肌弯举 5-10 次
-4. **按下 Q 退出**: 程序自动生成报告
-5. **查看报告**: 打开生成的 `report_*.txt` 查看详细反馈
-
-### 常见问题
-
-**问题**: 为什么数不到动作？  
-**答**: 
-- 检查摄像头是否能看清你的手臂
-- 确保光线充足（避免逆光）
-- 调整站位，让肩-肘-腕在摄像头视场内
-
-**问题**: 为什么总是有警告？  
-**答**: 这些就是改进方向！按照报告中的建议逐一改进。
-
-**问题**: 能否离线使用（不要网络）？  
-**答**: 可以。第一次运行会自动下载 YOLOv8 模型（约 50MB），之后离线也能用。
-
----
-
-## 下一阶段计划
-
-MVP 完成后，可扩展的功能：
-
-- 🔄 **支持更多动作**: 深蹲、推举、卧推等（配置化）
-- 📱 **移动端 / Web 版本**: 部署到服务器或手机
-- 🎯 **多摄像头 3D 重建**: 实现完整的三维动作分析
-- ☁️ **云端存储和历史对比**: 跟踪长期进度
-- 🤖 **AI 优化建议**: 基于历史数据的个性化训练计划
-
----
-
-## 技术栈
-
-| 组件 | 版本 | 用途 |
-|---|---|---|
-| **YOLOv8** | 8.0+ | 实时姿态检测框架 |
-| **OpenCV** | 4.8+ | 帧处理、渲染和窗口显示 |
-| **NumPy** | 1.24+ | 数组计算和向量数学 |
-| **PyYAML** | 6.0+ | 配置文件解析 |
-| **Python** | 3.9+ | 编程语言 |
-
----
-
-## 性能指标
-
-在 **RTX 4060 + 640×480 分辨率 + 30 FPS** 下:
-
-- **推理延迟**: 25-35 ms/帧
-- **总体延迟**: ~50 ms (包括后处理和渲染)
-- **GPU 显存占用**: ~1.8 GB
-- **CPU 占用**: ~20-30%
-
----
-
-## 仓库作者
-
-- **项目名**: FitVision MVP
-- **版本**: 0.1.0
-- **开发日期**: 2026-04-13
-- **适配硬件**: NVIDIA RTX 4060+
-
----
-
-## 许可
-
-MIT License
-
----
-
-## 常见问题 FAQ
-
-**Q: YOLOv8 模型会自动下载吗？**  
-A: 是的，第一次运行时会自动下载到 `~/.cache/ultralytics/` 目录。
-
-**Q: 能否用 CPU 推理？**  
-A: 可以，但速度会下降到 2-5 FPS，体验不佳。建议使用 GPU。
-
-**Q: 支持 CPU 专用机器吗？**  
-A: 支持，但推荐 Intel i7 12代+ 或 AMD Ryzen 5000 系列。
-
-**Q: 报告中的"改进建议"是如何生成的？**  
-A: 基于所有错误的频率统计，自动推荐最需要改进的方面。
-
----
+MIT
 
 祝你训练愉快！💪
 
